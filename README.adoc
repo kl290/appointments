@@ -1,0 +1,51 @@
+== appointments
+
+Das Skript api.py ist eine einfache Terminverwaltung, angeboten über REST (mithilfe von https://flask.palletsprojects.com/en/stable/[Flask]).
+Man kann Termine hinzufügen, bearbeiten, löschen und die Liste aller Termine abfragen.
+Es enthält allerdings Fehler.
+
+Du startest api.py entweder über IntelliJ oder mittels `python3 api.py` und erhältst dann einen lokal laufenden Webserver auf Port 5000, der Deine Anfragen erwartet.
+Eventuell musst Du zuvor noch das python Plugin für `flask` installieren.
+
+Durch `app.run(debug=True)` wird der Server neu gestartet, sobald Du im Code Änderungen machst.
+Dadurch verliert er seine gespeicherten Daten, da diese nur im Speicher existieren.
+
+Beispielanfragen, die Du mit einem HTTP-Client Deiner Wahl, (z.B. `curl`) ausführen kannst:
+
+* Liste abrufen
+----
+curl -X GET http://localhost:5000/appointments
+----
+* Termin eintragen
+----
+curl -X POST --location "http://localhost:5000/appointments" \
+    -H "Content-Type: application/json" \
+    -d '{"title": "Sommerfest", "start": "2025-09-19T10:00", "end": "2025-09-19T21:00"}'
+----
+* Termin ändern
+----
+curl -X PUT --location "http://localhost:5000/appointments/1" \
+    -H "Content-Type: application/json" \
+    -d '{"title": "Sommerfest 2", "start": "2025-09-19T10:00", "end": "2025-09-19T21:00"}'
+----
+* Termin löschen
+----
+curl -X DELETE --location "http://localhost:5000/appointments/2"
+----
+
+=== Aufgaben
+
+. Fehler finden
+* Führe verschiedene Anfragen gegen die API aus. Spiele mit den URLs, den HTTP-Verben, den Parametern etc. herum.
+* Analysiere den Code und bilde eine Erwartung zu den Funktionalitäten in den verschiedenen Endpunkten.
+* Finde Beispiele, wo eine Funktionalität nicht, wie erwartet, gegeben ist.
+* Dokumentiere die Beispiele
+. Analyse
+* Finde die Fehler im Code und erkläre, warum sie auftreten.
+* Dokumentiere Deine Funde
+. Fix
+* Korrigiere die Funktionen so, dass Deine gefundenen Fehler nicht mehr auftreten
+. Tests
+* Schreibe ein Testskript (tests.py), das die gewünschte Funktionalität absichert
+. Dokumentation
+* Fasse alle Dokumentation in einer Datei zusammen
