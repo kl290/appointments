@@ -4,21 +4,47 @@ app = Flask(__name__)
 
 appointments = []
 next_id = 1
+category_types = ["health", "general", "work", "social"]
 
 
-def extract_data_fields(json_data):
-    if not is_valid_appointment(json_data):
+def extract_and_validate_data_fields(json_data):
+    validate_appointment(json_data)
+
+    title = json_data.get("title")
+    start = json_data.get("start")
+    end = json_data.get("end")
+    category = json_data.get("category")
+
+    validate_category_types(category)
+
+    return title, start, end, category
+
+
+def validate_appointment(json_data):
+    if {"title", "start", "end", "category"} != set(json_data.keys()):
         raise ValueError("Invalid appointment: wrong or missing fields")
 
-    return json_data.get("title"), json_data.get("start"), json_data.get("end")
 
-
-def is_valid_appointment(json_data):
-    return {"title", "start", "end"} == set(json_data.keys())
+def validate_category_types(category):
+    if category not in category_types:
+        raise ValueError(f"Invalid category. Must be one of {category_types}")
 
 
 @app.route("/appointments", methods = ["GET"])
 def list_appointments():
+    category_filter = request.args.get("category")
+
+    if category_filter:
+        try:
+            validate_category_types(category_filter)
+        except ValueError as e:
+            return jsonify({"error": str(e)})
+
+        filtered = [appt for appt in appointments if appt["category"] == category_filter]
+
+        if not filtered:
+            return jsonify({"error": "No appointments found for this category"}), 404
+        return jsonify(filtered), 200
     return jsonify(appointments), 200
 
 
@@ -26,7 +52,7 @@ def list_appointments():
 def create_appointment():
     global next_id
     data = request.get_json()
-    title, start, end = extract_data_fields(data)
+    title, start, end, category = extract_and_validate_data_fields(data)
 
     for appointment in appointments:
         if end >= appointment["start"] and start <= appointment["end"]:
@@ -36,7 +62,8 @@ def create_appointment():
         "id": next_id,
         "title": title,
         "start": start,
-        "end": end
+        "end": end,
+        "category": category,
     }
     appointments.append(appointment)
     next_id += 1
@@ -47,7 +74,7 @@ def create_appointment():
 @app.route("/appointments/<int:appt_id>", methods = ["PUT"])
 def update_appointment(appt_id):
     data = request.get_json()
-    title, start, end = extract_data_fields(data)
+    title, start, end, category = extract_and_validate_data_fields(data)
 
     for appt in appointments:
         if end >= appt["start"] and start <= appt["end"]:
@@ -57,6 +84,7 @@ def update_appointment(appt_id):
             appt["title"] = title
             appt["start"] = start
             appt["end"] = end
+            appt["category"] = category
             return jsonify(appt), 200
 
     return jsonify({"error": "Appointment not found"}), 404
