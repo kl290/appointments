@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime
 
-from api import app, appointments, extract_and_validate_data_fields, validate_category_types, category_types
+from api import app, appointments, extract_and_validate_data_fields, validate_category_types, CATEGORY_TYPES
 
 
 class TestApi(unittest.TestCase):
@@ -110,11 +110,14 @@ class TestApi(unittest.TestCase):
         categorys = {"title", "start", "end", "category"}
         fehlerhafte_termine = [
             {},
+            {"category": "1"},
             {"title": "1"},
             {"title": "1", "end": "1"},
             {"start": "1", "end": "1"},
             {"title": "1", "start": "1"},
-            {"title": "1", "start": "1", "end": "1", "geheim": "1"}
+            {"title": "1", "start": "1", "category": "1"},
+            {"title": "1", "start": "1", "end": "1", "geheim": "1"},
+            {"title": "1", "start": "1", "end": "1", "geheim": "1", "category": "1"}
         ]
 
         for json_data in fehlerhafte_termine:
@@ -177,7 +180,7 @@ class TestApi(unittest.TestCase):
         category = {"category": "abc"}
         with self.assertRaises(ValueError) as contextManager:
             validate_category_types(category)
-        self.assertEqual(contextManager.exception.args[0], f"Invalid category. Must be one of {category_types}")
+        self.assertEqual(contextManager.exception.args[0], f"Invalid category. Must be one of {CATEGORY_TYPES}")
 
     def test_no_appointments_for_category(self):
         appointments.append({"title": "Meeting", "start": "10:00", "end": "12:00", "category": "general"})
@@ -189,9 +192,12 @@ class TestApi(unittest.TestCase):
 
     def test_shift_appointments_various_amounts(self):
         test_cases = [
-            {"amount": 1,"expected_start": datetime(2025, 1, 1, 10, 0),"expected_end": datetime(2025, 1, 2, 11, 0)},
-            {"amount": -1.5,"expected_start": datetime(2024, 12, 29, 22, 0),"expected_end": datetime(2024, 12, 30, 23, 0)},
-            { "amount": 2.3,"expected_start": datetime(2025, 1, 2, 17, 12),"expected_end": datetime(2025, 1, 3, 18, 12)},
+            {"amount_start": 1, "amount_end": 1, "expected_start": datetime(2025, 1, 1, 10, 0),
+             "expected_end": datetime(2025, 1, 2, 11, 0)},
+            {"amount_start": -1.5, "amount_end": -1.5, "expected_start": datetime(2024, 12, 29, 22, 0),
+             "expected_end": datetime(2024, 12, 30, 23, 0)},
+            {"amount_start": 2.3, "amount_end": 2.3, "expected_start": datetime(2025, 1, 2, 17, 12),
+             "expected_end": datetime(2025, 1, 3, 18, 12)},
         ]
 
         for case in test_cases:
@@ -204,7 +210,9 @@ class TestApi(unittest.TestCase):
                 "category": "work"
             })
 
-            response = self.client.post(f"/appointments/shift/1?amount={case['amount']}")
+            response = self.client.post(
+                f"/appointments/shift/1?amount_start={case['amount_start']}&amount_end={case['amount_end']}"
+            )
 
             self.assertEqual(response.status_code, 200)
             self.assertEqual(appointments[0]["id"], 1)
@@ -227,6 +235,67 @@ class TestApi(unittest.TestCase):
             "category": "work"
         })
 
-        response = self.client.post("/appointments/shift/1?amount=xx")
+        response = self.client.post("/appointments/shift/1?amount_start=xx")
         self.assertIn("error", response.json)
         self.assertEqual(response.json["error"], "Invalid amount. Must be a number.")
+
+    def test_end_shift(self):
+        appointments.append({
+            "id": 1,
+            "title": "Test Meeting",
+            "start": datetime(2024, 12, 31, 10, 0),
+            "end": datetime(2025, 1, 1, 11, 0),
+            "category": "work"
+        })
+        response = self.client.post("/appointments/shift/1?amount_end=3")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(appointments[0]["id"], 1)
+        self.assertEqual(appointments[0]["start"], datetime(2024, 12, 31, 10, 0))
+        self.assertEqual(appointments[0]["end"], datetime(2025, 1, 4, 11, 0))
+
+    def test_start_and_end_shift(self):
+        appointments.append({
+            "id": 1,
+            "title": "Test Meeting",
+            "start": datetime(2024, 12, 31, 10, 0),
+            "end": datetime(2025, 1, 1, 11, 0),
+            "category": "work"
+        })
+        response = self.client.post("/appointments/shift/1?amount_start=2.5&amount_end=3")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(appointments[0]["id"], 1)
+        self.assertEqual(appointments[0]["start"], datetime(2025, 1, 2, 22, 0))
+        self.assertEqual(appointments[0]["end"], datetime(2025, 1, 4, 11, 0))
+
+    def test_end_before_start(self):
+        appointments.append({
+            "id": 1,
+            "title": "Test Meeting",
+            "start": datetime(2023, 1, 1, 10, 0),
+            "end": datetime(2023, 1, 1, 11, 0),
+            "category": "work"
+        })
+        response = self.client.post("/appointments/shift/1?amount_start=5&amount_end=1")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("error", response.json)
+        self.assertEqual(response.json["error"], "Shift would result in start after end")
+
+    def test_shift_overlapping_appointment(self):
+        appointments.append({
+            "id": 1,
+            "title": "Meeting 1",
+            "start": datetime(2025, 9, 26, 10, 0),
+            "end": datetime(2025, 9, 26, 12, 0),
+            "category": "work"
+        })
+        appointments.append({
+            "id": 2,
+            "title": "Meeting 2",
+            "start": datetime(2025, 9, 26, 13, 0),
+            "end": datetime(2025, 9, 26, 15, 0),
+            "category": "work"
+        })
+
+        response = self.client.post("/appointments/shift/2?amount_start=-3&amount_end=0")
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json["error"], "Shift would cause overlapping appointment")

@@ -6,7 +6,8 @@ app = Flask(__name__)
 
 appointments = []
 next_id = 1
-category_types = ["health", "general", "work", "social"]
+CATEGORY_TYPES = ["health", "general", "work", "social"]
+TIME_FORMAT = "%Y-%m-%d %H:%M"
 
 
 def extract_and_validate_data_fields(json_data):
@@ -18,8 +19,8 @@ def extract_and_validate_data_fields(json_data):
     category = json_data.get("category")
 
     validate_category_types(category)
-    start = datetime.strptime(start_str, "%Y-%m-%d %H:%M")
-    end = datetime.strptime(end_str, "%Y-%m-%d %H:%M")
+    start = datetime.strptime(start_str, TIME_FORMAT)
+    end = datetime.strptime(end_str, TIME_FORMAT)
 
     return title, start, end, category
 
@@ -30,16 +31,16 @@ def validate_appointment(json_data):
 
 
 def validate_category_types(category):
-    if category not in category_types:
-        raise ValueError(f"Invalid category. Must be one of {category_types}")
+    if category not in CATEGORY_TYPES:
+        raise ValueError(f"Invalid category. Must be one of {CATEGORY_TYPES}")
 
 
 def serialize_datetime_format(appt):
     return {
         "id": appt["id"],
         "title": appt["title"],
-        "start": appt["start"].strftime("%Y-%m-%d %H:%M"),
-        "end": appt["end"].strftime("%Y-%m-%d %H:%M"),
+        "start": appt["start"].strftime(TIME_FORMAT),
+        "end": appt["end"].strftime(TIME_FORMAT),
         "category": appt["category"]
     }
 
@@ -115,25 +116,35 @@ def delete_appointment(appt_id):
 
 @app.route("/appointments/shift/<int:appt_id>", methods = ["POST"])
 def shift_appointment(appt_id):
-    amount_str = request.args.get("amount")
+    amount_start = request.args.get("amount_start", "0")
+    amount_end = request.args.get("amount_end", "0")
 
     try:
-        amount = float(amount_str)
+        shift_st = timedelta(days = float(amount_start))
+        shift_end = timedelta(days = float(amount_end))
     except ValueError:
         return jsonify({"error": "Invalid amount. Must be a number."}), 400
 
-    shift = timedelta(days = amount)
-
     for appt in appointments:
         if appt["id"] == appt_id:
-            appt["start"] = appt["start"] + shift
-            appt["end"] = appt["end"] + shift
+            new_start = appt["start"] + shift_st
+            new_end = appt["end"] + shift_end
+
+            if new_start > new_end:
+                return jsonify({"error": "Shift would result in start after end"}), 400
+
+            for other in appointments:
+                if other["id"] != appt_id and new_end > other["start"] and new_start < other["end"]:
+                    return jsonify({"error": "Shift would cause overlapping appointment"}), 409
+
+            appt["start"] = new_start
+            appt["end"] = new_end
             return jsonify(serialize_datetime_format(appt)), 200
 
     return jsonify({"error": "Appointment not found"}), 404
 
 
-app.config['JSON_SORT_KEYS'] = False
+app.config['app.json.sort_keys'] = False
 
 if __name__ == "__main__":  # pragma: no coverage
     app.run(debug = True)
