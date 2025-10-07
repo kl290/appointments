@@ -1,7 +1,9 @@
 import unittest
 from datetime import datetime
+from unittest.mock import patch
 
-from api import app, appointments, extract_and_validate_data_fields, validate_category_types, CATEGORY_TYPES
+from api import app, appointments, extract_and_validate_data_fields, validate_category_types, CATEGORY_TYPES, \
+    validate_appointment
 
 
 class TestApi(unittest.TestCase):
@@ -15,7 +17,8 @@ class TestApi(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json, [])
 
-    def test_list_appointments_with_entries(self):
+    @patch("api.extract_and_validate_data_fields", wraps = extract_and_validate_data_fields)
+    def test_list_appointments_with_entries(self, mock_extract):
         self.client.post("/appointments",
                          json = {"title": "Meeting", "start": "2025-09-26 10:00", "end": "2025-09-26 12:00",
                                  "category": "general"})
@@ -27,6 +30,7 @@ class TestApi(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
         self.assertEqual(len(appointments), 2)
+        mock_extract.assert_called()
 
     def test_create_appointment(self):
         response = self.client.post("/appointments",
@@ -50,7 +54,8 @@ class TestApi(unittest.TestCase):
         self.assertIn("error", response.json)
         self.assertEqual(response.json["error"], "Overlapping appointment")
 
-    def test_update_appointment(self):
+    @patch("api.extract_and_validate_data_fields", wraps = extract_and_validate_data_fields)
+    def test_update_appointment(self, mock_extract):
         self.client.post("/appointments",
                          json = {"title": "Meeting", "start": "2025-09-26 10:00", "end": "2025-09-26 12:00",
                                  "category": "general"})
@@ -63,6 +68,7 @@ class TestApi(unittest.TestCase):
         self.assertEqual(appointments[0]["start"], datetime(2025, 9, 26, 13, 0))
         self.assertEqual(appointments[0]["end"], datetime(2025, 9, 26, 15, 0))
         self.assertEqual(appointments[0]["category"], "general")
+        mock_extract.assert_called()
 
     def test_update_overlapping_appointment(self):
         self.client.post("/appointments",
@@ -107,7 +113,6 @@ class TestApi(unittest.TestCase):
         self.assertEqual(len(appointments), 1)
 
     def test_invalid_appointments(self):
-        categorys = {"title", "start", "end", "category"}
         fehlerhafte_termine = [
             {},
             {"category": "1"},
@@ -119,18 +124,25 @@ class TestApi(unittest.TestCase):
             {"title": "1", "start": "1", "end": "1", "geheim": "1"},
             {"title": "1", "start": "1", "end": "1", "geheim": "1", "category": "1"}
         ]
-
         for json_data in fehlerhafte_termine:
-            self.assertNotEqual(categorys, set(json_data.keys()))
+            with self.assertRaises(ValueError):
+                validate_appointment(json_data)
 
     def test_valid_appointment(self):
         json_data = {"title": "Meeting", "start": "2025-09-26 10:00", "end": "2025-09-26 12:00", "category": "general"}
-        self.assertEqual({"title", "start", "end", "category"}, set(json_data.keys()))
+        validate_appointment(json_data)
 
     def test_extract_fields_with_valid_appointment(self):
         json_data = {"title": "Meeting", "start": "2025-09-26 10:00", "end": "2025-09-26 12:00", "category": "general"}
         result = extract_and_validate_data_fields(json_data)
         self.assertEqual(result, ("Meeting", datetime(2025, 9, 26, 10, 0), datetime(2025, 9, 26, 12, 0), "general"))
+
+    def test_extract_fields_with_invalid_datetime_format(self):
+        json_data = {
+            "title": "Meeting", "start": "2025-09-26 10:00", "end": "2025-0a-26 12:00", "category": "general"}
+
+        with self.assertRaises(ValueError):
+            extract_and_validate_data_fields(json_data)
 
     def test_extract_fields_with_invalid_appointment(self):
         with self.assertRaises(ValueError) as contextManager:

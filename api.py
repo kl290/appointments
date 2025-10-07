@@ -26,7 +26,7 @@ def extract_and_validate_data_fields(json_data):
 
 
 def validate_appointment(json_data):
-    if {"title", "start", "end", "category"} != set(json_data.keys()):
+    if ["category", "end", "start", "title"] != sorted(json_data.keys()):
         raise ValueError("Invalid appointment: wrong or missing fields")
 
 
@@ -67,7 +67,10 @@ def list_appointments():
 def create_appointment():
     global next_id
     data = request.get_json()
-    title, start, end, category = extract_and_validate_data_fields(data)
+    try:
+        title, start, end, category = extract_and_validate_data_fields(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
     for appointment in appointments:
         if end >= appointment["start"] and start <= appointment["end"]:
@@ -88,7 +91,10 @@ def create_appointment():
 @app.route("/appointments/<int:appt_id>", methods = ["PUT"])
 def update_appointment(appt_id):
     data = request.get_json()
-    title, start, end, category = extract_and_validate_data_fields(data)
+    try:
+        title, start, end, category = extract_and_validate_data_fields(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
     for appt in appointments:
         if appt["id"] != appt_id and end >= appt["start"] and start <= appt["end"]:
